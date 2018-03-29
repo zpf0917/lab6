@@ -19,17 +19,17 @@ Part 1: Programming with lazy streams
 Recall the lazy stream type and associated functions from lecture,
 here packaged up into a module. *)
 
-   
+
 module LazyStream =
   struct
 
-    type 'a str = Cons of 'a * 'a stream 
+    type 'a str = Cons of 'a * 'a stream
      and 'a stream = unit -> 'a str ;;
-      
+
     (* Extracting the head and tail of a lazy stream *)
     let head (s : 'a stream) : 'a =
       let Cons(h, _t) = s() in h ;;
-      
+
     let tail (s : 'a stream) : 'a stream =
       let Cons(_h, t) = s() in t ;;
 
@@ -37,13 +37,13 @@ module LazyStream =
     let rec first (n : int) (s : 'a stream) : 'a list =
       if n = 0 then []
       else head s :: first (n - 1) (tail s) ;;
-      
+
     (* Mapping a function lazily over a stream *)
-    let rec smap (f : 'a -> 'b) (s : 'a stream) : ('b stream) = 
+    let rec smap (f : 'a -> 'b) (s : 'a stream) : ('b stream) =
       fun () -> Cons(f (head s), smap f (tail s)) ;;
 
     (* Mapping a binary function over two streams *)
-    let rec smap2 f s1 s2 = 
+    let rec smap2 f s1 s2 =
       fun () -> Cons(f (head s1) (head s2),
                      smap2 f (tail s1) (tail s2)) ;;
   end ;;
@@ -52,7 +52,7 @@ open LazyStream ;;
 
 (* Here, recalled from lecture, is the definition of an infinite
 stream of ones. *)
-  
+
 let rec ones : int stream =
   fun () -> Cons(1, ones) ;;
 
@@ -65,23 +65,23 @@ succeeding exercises, you shouldn't feel beholden to how the
 definition is introduced in the skeleton code below. (We'll stop
 mentioning this now, and forevermore.) *)
 
-let twos = fun () -> failwith "twos not implemented" ;;
+let twos = smap ((+) 1) ones ;;
 
 (* An infinite stream of threes, built from the ones and twos. *)
 
-let threes = fun () -> failwith "threes not implemented" ;;
-  
+let threes = smap2 (+) ones twos;;
+
 (* An infinite stream of natural numbers (0, 1, 2, 3, ...). *)
 
-let nats = fun () -> failwith "nats not implemented" ;;
+let rec nats = fun () -> Cons(0 ,smap ((+) 1) nats);;
 
 (* Now some new examples. For these, don't build them directly, but
 make use of the stream mapping functions. *)
 
 (* Infinite streams of even and odd numbers. *)
 
-let evens () = failwith "evens not implemented" ;;
-let odds () = failwith "odds not implemented" ;;
+let rec evens () = Cons(0 ,smap ((+) 2) evens);;
+let rec odds () = Cons(1 ,smap ((+) 2) odds);;
 
 (* In addition to mapping over streams, we should be able to use all
 the other higher-order list functions you've grown to know and love,
@@ -98,12 +98,21 @@ predicate.  Example:
    - : int list = [0; 2; 4; 6; 8; 10; 12; 14; 16; 18]
  *)
 
-let sfilter _ = failwith "sfilter not implemented" ;;
-  
+(* let rec sfilter (f: 'a -> bool) (s: 'a stream): 'a stream =
+  fun () ->
+    let Cons(x, y) = s() in
+    if (f x = true) then (Cons(x, sfilter f y))
+                    else sfilter f y ();; *)
+
+let rec sfilter (f: 'a -> bool) (s: 'a stream): 'a stream =
+  fun () ->
+    if (f (head s) = true) then (Cons((head s), sfilter f (tail s)))
+                    else sfilter f (tail s) ();;
+
 (* Now redefine evens and odds using sfilter *)
 
-let evens2 _ = failwith "evens with sfilter not implemented" ;;
-let odds2 _ = failwith "odds with sfilter not implemented" ;;
+let evens2 () = sfilter (fun a -> a mod 2 = 0) nats () ;;
+let odds2 () = sfilter (fun a -> a mod 2 = 1) nats () ;;
 
 (*====================================================================
 Part 2: Eratosthenes Sieve
@@ -134,7 +143,7 @@ and again:
 ...
 2 3 5 7 11 13
 
-Implement Eratosthenes sieve to generate an infinite stream of primes. 
+Implement Eratosthenes sieve to generate an infinite stream of primes.
 Example:
 
 # primes = sieve (tail (tail nats)) ;;
@@ -159,10 +168,19 @@ In defining the sieve function, the following functon may be useful.
 *)
 
 (* not_div_by n m -- Predicate determines if m is evenly divisible by n *)
-let not_div_by (n : int) (m : int) : bool = 
+let not_div_by (n : int) (m : int) : bool =
     not (m mod n = 0) ;;
 
-let rec sieve s = failwith "sieve not implemented" ;;
+let rec sieve s =
+  let h = head s in
+  let t = tail s in
+  let left = sfilter (not_div_by h) t in
+  (fun () -> Cons(h, sieve left))
+;;
+
+(* # primes = sieve (tail (tail nats)) ;;
+# first 4 primes ;;
+- : int list = [2; 3; 5; 7] *)
 
 (*====================================================================
 Part 3: Using OCaml's Lazy module
@@ -209,13 +227,13 @@ module NativeLazyStreams =
 
     type 'a str = Cons of 'a * 'a stream
      and 'a stream = 'a str Lazy.t ;;
-      
+
     let head (s : 'a stream) : 'a =
       let Cons(h, _t) = Lazy.force s in h ;;
-      
+
     let tail (s : 'a stream) : 'a stream =
       let Cons(_h, t) = Lazy.force s in t ;;
-      
+
     let rec first (n : int) (s : 'a stream) : 'a list =
       if n = 0 then []
       else head s :: first (n - 1) (tail s) ;;
@@ -226,7 +244,7 @@ module NativeLazyStreams =
     let rec smap2 (f : 'a -> 'b -> 'c)
                   (s1 : 'a stream)
                   (s2 : 'b stream)
-                  : 'c stream = 
+                  : 'c stream =
       failwith "smap2 native not implemented" ;;
 
     let rec sfilter (pred : 'a -> bool) (s : 'a stream) : 'a stream =
@@ -236,11 +254,11 @@ module NativeLazyStreams =
 
 (* Now we can redo the Fibonacci example. *)
 open NativeLazyStreams ;;
-  
+
 let rec fibs =
   lazy (Cons(0, lazy (Cons(1, smap2 (+) fibs (tail fibs))))) ;;
 
-(* This version is much faster, even the first time around. Why? 
+(* This version is much faster, even the first time around. Why?
 
 # CS51.call_reporting_time (first 50) fibs ;;
 time (msecs): 0.029087
@@ -259,12 +277,12 @@ time (msecs): 0.006914
  24157817; 39088169; 63245986; 102334155; 165580141; 267914296; 433494437;
  701408733; 1134903170; 1836311903; 2971215073; 4807526976; 7778742049]
  *)
-  
+
 (* Redo the Eratosthenes sieve using the NativeLazyStreams by
    completing the functions below. *)
 
 let rec nats2 = lazy (failwith "nats native not implemented") ;;
- 
+
 let rec sieve2 s = failwith "sieve native not implemented" ;;
 
 let primes2 = lazy (failwith "primes2 native not implemented") ;;
